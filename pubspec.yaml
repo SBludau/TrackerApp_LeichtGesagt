@@ -25,8 +25,8 @@ dependencies:
   # LLM NLP extraction (offline, via llama.cpp — added in later milestone)
   # fllama: ^0.0.1
 
-  # In-app updates (Play Store)
-  in_app_update: ^4.2.3
+  # In-app updates (Play Store) — temporarily disabled (re-enable before Play Store release)
+  # in_app_update: ^4.2.3
 
 dev_dependencies:
   flutter_test:
