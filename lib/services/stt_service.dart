@@ -1,63 +1,108 @@
-import 'dart:async';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
+import 'package:speech_to_text/speech_recognition_result.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 
-/// Stub speech-to-text service.
+/// Speech-to-text service backed by Android's built-in speech recognition.
 ///
-/// In a production build this would integrate with Vosk or a similar
-/// offline STT engine. For development / emulator use it simulates a
-/// recording session: after [_recordingDuration] it resolves with a
-/// hard-coded transcript.
+/// Uses the [speech_to_text] package which delegates to the on-device
+/// recogniser (Google Speech on most Android devices).
+///
+/// Production replacement: swap this with a [vosk_flutter] implementation
+/// before the Play Store release so the app runs fully offline.
 class SttService {
-  static const _recordingDuration = Duration(seconds: 3);
+  final _speech = SpeechToText();
 
+  bool _initialised = false;
   bool _isRecording = false;
-  Completer<String>? _completer;
-  Timer? _timer;
 
   bool get isRecording => _isRecording;
+  bool get isAvailable => _initialised;
 
-  /// Begins a simulated recording session.
-  /// Call [stopRecording] to finalise early, or wait for the auto-stop.
-  Future<String> startRecording() {
-    if (_isRecording) {
-      stopRecording();
+  // ─── Init ──────────────────────────────────────────────────────────────────
+
+  /// Requests microphone permission and initialises the recogniser.
+  /// Must be called once before [startRecording].
+  Future<bool> initialise() async {
+    if (_initialised) return true;
+
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) return false;
+
+    _initialised = await _speech.initialize(
+      onError: _onError,
+      onStatus: _onStatus,
+      debugLogging: false,
+    );
+    return _initialised;
+  }
+
+  // ─── Recording ─────────────────────────────────────────────────────────────
+
+  /// Starts listening and streams partial + final results via callbacks.
+  ///
+  /// [onPartial] is called on every intermediate recognition result.
+  /// [onFinal]   is called with the last recognised text when the user pauses.
+  /// [onError]   is called if the recogniser encounters a problem.
+  Future<void> startRecording({
+    required void Function(String text) onPartial,
+    required void Function(String text) onFinal,
+    required void Function(String message) onError,
+  }) async {
+    if (!_initialised) {
+      final ok = await initialise();
+      if (!ok) {
+        onError('Mikrofon-Zugriff verweigert oder Spracherkennung nicht verfügbar.');
+        return;
+      }
+    }
+
+    if (_speech.isListening) {
+      await _speech.stop();
     }
 
     _isRecording = true;
-    _completer = Completer<String>();
 
-    _timer = Timer(_recordingDuration, () {
-      _finishRecording();
-    });
-
-    return _completer!.future;
+    await _speech.listen(
+      onResult: (SpeechRecognitionResult result) {
+        if (result.finalResult) {
+          _isRecording = false;
+          onFinal(result.recognizedWords);
+        } else {
+          onPartial(result.recognizedWords);
+        }
+      },
+      localeId: 'de_DE',
+      pauseFor: const Duration(seconds: 3),
+      listenFor: const Duration(seconds: 60),
+      listenOptions: SpeechListenOptions(
+        listenMode: ListenMode.dictation,
+        cancelOnError: false,
+      ),
+    );
   }
 
-  /// Stops recording and returns the transcript (even if called early).
-  void stopRecording() {
-    _timer?.cancel();
-    _timer = null;
-    _finishRecording();
-  }
-
-  void _finishRecording() {
-    if (!_isRecording) return;
+  /// Stops recording and triggers the final result callback if still listening.
+  Future<void> stopRecording() async {
     _isRecording = false;
-    _completer?.complete(_mockTranscript);
-    _completer = null;
+    await _speech.stop();
   }
 
-  /// Cancels the current recording without producing a result.
-  void cancelRecording() {
-    _timer?.cancel();
-    _timer = null;
+  /// Cancels recording without producing a result.
+  Future<void> cancelRecording() async {
     _isRecording = false;
-    _completer?.completeError('cancelled');
-    _completer = null;
+    await _speech.cancel();
   }
 
-  static const _mockTranscript =
-      'Heute war der Stress so bei einer 7, '
-      'Energie war okay vielleicht 6, '
-      'hab gut geschlafen würde sagen 8. '
-      'Hatte heute Morgen Kaffee und dann Sport gemacht.';
+  // ─── Internal callbacks ────────────────────────────────────────────────────
+
+  void _onError(SpeechRecognitionError error) {
+    _isRecording = false;
+  }
+
+  void _onStatus(String status) {
+    if (status == 'notListening' || status == 'done') {
+      _isRecording = false;
+    }
+  }
 }

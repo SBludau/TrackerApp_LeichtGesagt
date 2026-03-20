@@ -24,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   bool _isRecording = false;
   String _liveTranscript = '';
+  String? _sttError;
 
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
@@ -36,9 +37,14 @@ class _HomeScreenState extends State<HomeScreen>
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
 
-    _pulseAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(
+    _pulseAnimation = Tween<double>(begin: 0.4, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+
+    // Pre-initialise STT so the first tap has no delay
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _stt.initialise();
+    });
   }
 
   @override
@@ -52,34 +58,51 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _toggleRecording() async {
     if (_isRecording) {
-      _stt.stopRecording();
+      await _stt.stopRecording();
+      // The final result callback will handle navigation;
+      // if stopRecording fires before onFinal we navigate from here.
+      if (_liveTranscript.isNotEmpty && _liveTranscript != 'Aufnahme läuft…') {
+        await _navigateToReview(_liveTranscript);
+      }
+      setState(() => _isRecording = false);
       return;
     }
 
     setState(() {
       _isRecording = true;
       _liveTranscript = 'Aufnahme läuft…';
+      _sttError = null;
     });
 
-    try {
-      final transcript = await _stt.startRecording();
-      if (!mounted) return;
-
-      setState(() {
-        _isRecording = false;
-        _liveTranscript = transcript;
-      });
-
-      await _navigateToReview(transcript);
-    } catch (_) {
-      if (mounted) setState(() => _isRecording = false);
-    }
+    await _stt.startRecording(
+      onPartial: (text) {
+        if (!mounted) return;
+        setState(() => _liveTranscript = text.isEmpty ? 'Aufnahme läuft…' : text);
+      },
+      onFinal: (text) async {
+        if (!mounted) return;
+        setState(() {
+          _isRecording = false;
+          _liveTranscript = text;
+        });
+        if (text.isNotEmpty) {
+          await _navigateToReview(text);
+        }
+      },
+      onError: (msg) {
+        if (!mounted) return;
+        setState(() {
+          _isRecording = false;
+          _liveTranscript = '';
+          _sttError = msg;
+        });
+      },
+    );
   }
 
   Future<void> _navigateToReview(String transcript) async {
     final state = context.read<AppState>();
-    final activeTypes =
-        state.activeCategories.map((c) => c.type).toList();
+    final activeTypes = state.activeCategories.map((c) => c.type).toList();
     final result = _nlp.extractValues(transcript, activeTypes);
 
     if (!mounted) return;
@@ -92,7 +115,6 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
     );
-    // Reload after returning from review
     if (mounted) {
       setState(() => _liveTranscript = '');
       await state.loadData();
@@ -147,8 +169,8 @@ class _HomeScreenState extends State<HomeScreen>
                     children: [
                       const AppLogo(size: 34),
                       const SizedBox(width: 10),
-                      const Text(
-                          'LeichtGesagt', style: AppTextStyles.screenTitle),
+                      const Text('LeichtGesagt',
+                          style: AppTextStyles.screenTitle),
                     ],
                   ),
                   StreakBadge(days: state.streak),
@@ -161,15 +183,15 @@ class _HomeScreenState extends State<HomeScreen>
               Text(
                 _todayLabel(),
                 style: const TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textMuted,
-                ),
+                    fontSize: 13, color: AppColors.textMuted),
               ),
 
               const SizedBox(height: AppSpacing.gap),
 
-              // ── Context prompt ─────────────────────────────────────────────
-              if (!hasEntry) _PromptCard(categories: categories.map((c) => c.name).toList()),
+              // ── Context prompt / already done ───────────────────────────────
+              if (!hasEntry)
+                _PromptCard(
+                    categories: categories.map((c) => c.name).toList()),
 
               if (hasEntry)
                 Container(
@@ -177,15 +199,14 @@ class _HomeScreenState extends State<HomeScreen>
                   padding: const EdgeInsets.all(AppSpacing.cardPadding),
                   decoration: BoxDecoration(
                     color: AppColors.insightBg,
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusLarge),
+                    borderRadius:
+                        BorderRadius.circular(AppSpacing.radiusLarge),
                     border: Border.all(color: AppColors.insightBorder),
                   ),
                   child: const Text(
                     'Aufnahme für heute bereits gespeichert ✓',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF6EE7B7),
-                    ),
+                    style:
+                        TextStyle(fontSize: 13, color: Color(0xFF6EE7B7)),
                   ),
                 ),
 
@@ -213,8 +234,40 @@ class _HomeScreenState extends State<HomeScreen>
 
               const SizedBox(height: AppSpacing.gap),
 
+              // ── STT error ──────────────────────────────────────────────────
+              if (_sttError != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppSpacing.cardPadding),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2a1515),
+                    borderRadius:
+                        BorderRadius.circular(AppSpacing.radiusLarge),
+                    border: Border.all(
+                        color: AppColors.warning.withValues(alpha: 0.5)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: AppColors.warning, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _sttError!,
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.warning),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              if (_sttError != null) const SizedBox(height: AppSpacing.gap),
+
               // ── Live transcript box ────────────────────────────────────────
-              if (_isRecording || _liveTranscript.isNotEmpty)
+              if (_isRecording ||
+                  (_liveTranscript.isNotEmpty &&
+                      _liveTranscript != 'Aufnahme läuft…'))
                 AnimatedBuilder(
                   animation: _pulseAnimation,
                   builder: (context, child) => Container(
@@ -225,20 +278,55 @@ class _HomeScreenState extends State<HomeScreen>
                       borderRadius:
                           BorderRadius.circular(AppSpacing.radiusLarge),
                       border: Border.all(
-                        color: AppColors.indigo
-                            .withValues(alpha: _isRecording ? _pulseAnimation.value : 0.3),
+                        color: AppColors.indigo.withValues(
+                            alpha: _isRecording
+                                ? _pulseAnimation.value
+                                : 0.3),
                         width: 1.5,
                       ),
                     ),
                     child: child,
                   ),
-                  child: Text(
-                    _liveTranscript,
-                    style: AppTextStyles.body,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_isRecording)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            children: [
+                              AnimatedBuilder(
+                                animation: _pulseAnimation,
+                                builder: (_, __) => Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: AppColors.warning.withValues(
+                                        alpha: _pulseAnimation.value),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'AUFNAHME LÄUFT',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  letterSpacing: 1.0,
+                                  color: AppColors.textDisabled,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      Text(_liveTranscript, style: AppTextStyles.body),
+                    ],
                   ),
                 ),
 
-              if (_isRecording || _liveTranscript.isNotEmpty)
+              if (_isRecording ||
+                  (_liveTranscript.isNotEmpty &&
+                      _liveTranscript != 'Aufnahme läuft…'))
                 const SizedBox(height: AppSpacing.gap),
 
               const SizedBox(height: 20),
@@ -293,6 +381,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
         ),
+
         const SizedBox(height: AppSpacing.gap),
 
         // Mic button
@@ -312,20 +401,22 @@ class _HomeScreenState extends State<HomeScreen>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.indigo.withValues(alpha: hasEntry ? 0.1 : 0.35),
+                    color: AppColors.indigo
+                        .withValues(alpha: hasEntry ? 0.1 : 0.35),
                     blurRadius: 24,
                     spreadRadius: 2,
                   ),
                 ],
               ),
               child: Icon(
-                _isRecording ? Icons.stop : Icons.mic,
+                _isRecording ? Icons.stop_rounded : Icons.mic,
                 color: Colors.white,
                 size: 30,
               ),
             ),
           ),
         ),
+
         const SizedBox(height: 6),
         Center(
           child: Text(
@@ -335,9 +426,7 @@ class _HomeScreenState extends State<HomeScreen>
                     ? 'Bereits aufgenommen'
                     : 'Aufnahme starten',
             style: const TextStyle(
-              fontSize: 10,
-              color: AppColors.textMuted,
-            ),
+                fontSize: 10, color: AppColors.textMuted),
           ),
         ),
 
@@ -353,9 +442,7 @@ class _HomeScreenState extends State<HomeScreen>
                 child: Text(
                   'Heute überspringen',
                   style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textDisabled,
-                  ),
+                      fontSize: 13, color: AppColors.textDisabled),
                 ),
               ),
             ),
@@ -382,9 +469,8 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   String _lastEntryLabel(AppState state) {
-    final entries = state.allEntries
-        .where((e) => !e.isSkipped && e.hasValues)
-        .toList();
+    final entries =
+        state.allEntries.where((e) => !e.isSkipped && e.hasValues).toList();
     if (entries.isEmpty) return '—';
     final last = entries.last.date;
     const months = [
@@ -399,7 +485,6 @@ class _HomeScreenState extends State<HomeScreen>
 
 class _PromptCard extends StatelessWidget {
   final List<String> categories;
-
   const _PromptCard({required this.categories});
 
   @override

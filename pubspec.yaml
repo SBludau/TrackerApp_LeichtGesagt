@@ -28,8 +28,10 @@ dependencies:
   # Icons
   cupertino_icons: ^1.0.8
 
-  # Speech-to-text (offline, via Vosk — added in later milestone)
-  # vosk_flutter: ^0.2.0
+  # Speech-to-text (Androids eingebaute Spracherkennung, de_DE)
+  # Ersatz durch vosk_flutter (vollständig offline) vor Play-Store-Release
+  speech_to_text: ^7.0.0
+  permission_handler: ^11.3.1
 
   # LLM NLP extraction (offline, via llama.cpp — added in later milestone)
   # fllama: ^0.0.1

@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] – 2026-03-20
+
+### Added
+- Echte Spracheingabe via `speech_to_text ^7.0.0` (Androids eingebaute
+  Spracherkennung, Locale `de_DE`), ersetzt den 3-Sekunden-Stub
+- Streaming-Transkription: Teilerkennungen erscheinen live in der Transcript-Box
+  während der Aufnahme läuft
+- Mikrofon-Berechtigung via `permission_handler ^11.3.1` — wird beim ersten
+  Mic-Tap automatisch angefordert
+- `SttService.initialise()` wird beim App-Start im Hintergrund vorinitialisiert
+  (kein Delay beim ersten Tap)
+- Pulsierender Aufnahme-Indikator (roter Dot + Label „AUFNAHME LÄUFT")
+- Fehleranzeige im HomeScreen wenn STT nicht verfügbar (rote Warning-Card)
+
+### Changed
+- `NlpService` massiv erweitert: deutsche Zahlwörter (eins–zehn), Kontext-
+  muster („war bei X", „würde sagen X", „so um die X", „ungefähr X"),
+  implizite Qualitätswörter („gut" → 7.5, „erschöpft" → 2.0), 50+ Lifestyle-
+  Tags, Trefferfenster auf 40 Zeichen vergrößert
+- `SttService` komplett neu geschrieben: callback-basiertes Streaming-API
+  (onPartial / onFinal / onError) statt Future<String>
+- `HomeScreen` aktualisiert: nutzt neues Streaming-API, Stop-Button löst
+  sofortige Navigation zum ReviewScreen aus
+- `AndroidManifest.xml`: `RECORD_AUDIO` und `INTERNET` Permissions ergänzt
+  (INTERNET nur für initialen STT-Handshake nötig)
+
+### Notes
+- `speech_to_text` verwendet Androids eingebaute ASR (Google Speech) —
+  erfordert einmaligen Internet-Zugang bei erster Nutzung.
+  Ersatz durch `vosk_flutter` (vollständig offline) vor Play-Store-Release.
+
 ## [0.2.0] – 2026-03-20
 
 ### Added
