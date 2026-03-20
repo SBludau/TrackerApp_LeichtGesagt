@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'screens/main_shell.dart';
+import 'screens/onboarding_screen.dart';
+import 'services/preferences_service.dart';
+import 'state/app_state.dart';
 import 'theme/app_theme.dart';
-import 'screens/home_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Force portrait orientation
-  SystemChrome.setPreferredOrientations([
+  await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
@@ -20,19 +24,31 @@ void main() {
     systemNavigationBarIconBrightness: Brightness.light,
   ));
 
-  runApp(const LeichtGesagtApp());
+  final prefs = PreferencesService();
+  final onboardingDone = await prefs.isOnboardingCompleted();
+
+  runApp(LeichtGesagtApp(showOnboarding: !onboardingDone));
 }
 
 class LeichtGesagtApp extends StatelessWidget {
-  const LeichtGesagtApp({super.key});
+  final bool showOnboarding;
+
+  const LeichtGesagtApp({super.key, required this.showOnboarding});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'LeichtGesagt',
-      debugShowCheckedModeBanner: false,
-      theme: buildAppTheme(),
-      home: const HomeScreen(),
+    return ChangeNotifierProvider(
+      create: (_) => AppState()..loadData(),
+      child: MaterialApp(
+        title: 'LeichtGesagt',
+        debugShowCheckedModeBanner: false,
+        theme: buildAppTheme(),
+        initialRoute: showOnboarding ? '/onboarding' : '/home',
+        routes: {
+          '/onboarding': (_) => const OnboardingScreen(),
+          '/home': (_) => const MainShell(),
+        },
+      ),
     );
   }
 }

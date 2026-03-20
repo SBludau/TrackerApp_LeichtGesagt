@@ -1,18 +1,133 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/stt_service.dart';
+import '../services/nlp_service.dart';
+import '../state/app_state.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_logo.dart';
+import '../widgets/category_pill.dart';
+import '../widgets/streak_badge.dart';
+import 'review_screen.dart';
 
-/// Screen 1 – Tagesaufnahme
-///
-/// Layout (top → bottom):
-///   Header:   Logo-Icon + App-Name  |  Streak-Badge
-///   Prompt:   Kontextueller Hinweistext (Card)
-///   Pills:    Aktive Tracking-Kategorien (horizontal scrollbar)
-///   Actions:  Standard-Tag-Button | Mic-Button (CTA) | Überspringen
-class HomeScreen extends StatelessWidget {
+/// Screen 1 – Tagesaufnahme (daily voice entry).
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
+  final SttService _stt = SttService();
+  final NlpService _nlp = NlpService();
+
+  bool _isRecording = false;
+  String _liveTranscript = '';
+
+  late final AnimationController _pulseController;
+  late final Animation<double> _pulseAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+
+    _pulseAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _stt.cancelRecording();
+    super.dispose();
+  }
+
+  // ─── Recording ───────────────────────────────────────────────────────────────
+
+  Future<void> _toggleRecording() async {
+    if (_isRecording) {
+      _stt.stopRecording();
+      return;
+    }
+
+    setState(() {
+      _isRecording = true;
+      _liveTranscript = 'Aufnahme läuft…';
+    });
+
+    try {
+      final transcript = await _stt.startRecording();
+      if (!mounted) return;
+
+      setState(() {
+        _isRecording = false;
+        _liveTranscript = transcript;
+      });
+
+      await _navigateToReview(transcript);
+    } catch (_) {
+      if (mounted) setState(() => _isRecording = false);
+    }
+  }
+
+  Future<void> _navigateToReview(String transcript) async {
+    final state = context.read<AppState>();
+    final activeTypes =
+        state.activeCategories.map((c) => c.type).toList();
+    final result = _nlp.extractValues(transcript, activeTypes);
+
+    if (!mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ReviewScreen(
+          transcript: transcript,
+          extractionResult: result,
+        ),
+      ),
+    );
+    // Reload after returning from review
+    if (mounted) {
+      setState(() => _liveTranscript = '');
+      await state.loadData();
+    }
+  }
+
+  // ─── Quick actions ────────────────────────────────────────────────────────────
+
+  Future<void> _standardTag() async {
+    final state = context.read<AppState>();
+    await state.applyStandardTag();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Standard-Tag gespeichert ✓')),
+    );
+  }
+
+  Future<void> _skip() async {
+    final state = context.read<AppState>();
+    await state.skipDay();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Tag übersprungen')),
+    );
+  }
+
+  // ─── Build ────────────────────────────────────────────────────────────────────
+
+  @override
   Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    final categories = state.activeCategories;
+    final entry = state.todayEntry;
+    final hasEntry = state.hasEntryToday;
+
     return Scaffold(
       backgroundColor: AppColors.appBackground,
       body: SafeArea(
@@ -24,162 +139,272 @@ class HomeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _Header(),
+              // ── Header ─────────────────────────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const AppLogo(size: 34),
+                      const SizedBox(width: 10),
+                      const Text(
+                          'LeichtGesagt', style: AppTextStyles.screenTitle),
+                    ],
+                  ),
+                  StreakBadge(days: state.streak),
+                ],
+              ),
+
+              const SizedBox(height: 6),
+
+              // ── Date ───────────────────────────────────────────────────────
+              Text(
+                _todayLabel(),
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textMuted,
+                ),
+              ),
+
               const SizedBox(height: AppSpacing.gap),
-              _PromptCard(),
+
+              // ── Context prompt ─────────────────────────────────────────────
+              if (!hasEntry) _PromptCard(categories: categories.map((c) => c.name).toList()),
+
+              if (hasEntry)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppSpacing.cardPadding),
+                  decoration: BoxDecoration(
+                    color: AppColors.insightBg,
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusLarge),
+                    border: Border.all(color: AppColors.insightBorder),
+                  ),
+                  child: const Text(
+                    'Aufnahme für heute bereits gespeichert ✓',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF6EE7B7),
+                    ),
+                  ),
+                ),
+
               const SizedBox(height: AppSpacing.gap),
-              _CategoryPills(),
-              const SizedBox(height: 36),
-              _ActionArea(),
+
+              // ── Category pills ─────────────────────────────────────────────
+              if (categories.isNotEmpty)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: categories
+                        .map((cat) => Padding(
+                              padding: const EdgeInsets.only(
+                                  right: AppSpacing.gapTight),
+                              child: CategoryPill(
+                                category: cat,
+                                isActive: entry?.values
+                                        .containsKey(cat.key) ??
+                                    false,
+                              ),
+                            ))
+                        .toList(),
+                  ),
+                ),
+
+              const SizedBox(height: AppSpacing.gap),
+
+              // ── Live transcript box ────────────────────────────────────────
+              if (_isRecording || _liveTranscript.isNotEmpty)
+                AnimatedBuilder(
+                  animation: _pulseAnimation,
+                  builder: (context, child) => Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(AppSpacing.cardPadding),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius:
+                          BorderRadius.circular(AppSpacing.radiusLarge),
+                      border: Border.all(
+                        color: AppColors.indigo
+                            .withValues(alpha: _isRecording ? _pulseAnimation.value : 0.3),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: child,
+                  ),
+                  child: Text(
+                    _liveTranscript,
+                    style: AppTextStyles.body,
+                  ),
+                ),
+
+              if (_isRecording || _liveTranscript.isNotEmpty)
+                const SizedBox(height: AppSpacing.gap),
+
+              const SizedBox(height: 20),
+
+              // ── Action area ────────────────────────────────────────────────
+              _buildActionArea(hasEntry),
+
+              const SizedBox(height: 24),
+
+              // ── Last entry note ────────────────────────────────────────────
+              if (state.allEntries.isNotEmpty)
+                Center(
+                  child: Text(
+                    'Letzter Eintrag: ${_lastEntryLabel(state)}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textDisabled,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
       ),
     );
   }
-}
 
-// ─── Header ──────────────────────────────────────────────────────────────────
-
-class _Header extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildActionArea(bool hasEntry) {
+    return Column(
       children: [
-        Row(
-          children: [
-            // App icon (inline SVG-derived shape – logo widget)
-            _AppIconSmall(),
-            const SizedBox(width: 10),
-            const Text('LeichtGesagt', style: AppTextStyles.screenTitle),
-          ],
+        // Standard-Tag button
+        GestureDetector(
+          onTap: hasEntry ? null : _standardTag,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMedium),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Center(
+              child: Text(
+                'Standard-Tag',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: hasEntry
+                      ? AppColors.textDisabled
+                      : AppColors.textMuted,
+                ),
+              ),
+            ),
+          ),
         ),
-        _StreakBadge(days: 7),
+        const SizedBox(height: AppSpacing.gap),
+
+        // Mic button
+        Center(
+          child: GestureDetector(
+            onTap: hasEntry ? null : _toggleRecording,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: hasEntry
+                    ? AppColors.indigo.withValues(alpha: 0.35)
+                    : _isRecording
+                        ? const Color(0xFFF87171)
+                        : AppColors.indigo,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.indigo.withValues(alpha: hasEntry ? 0.1 : 0.35),
+                    blurRadius: 24,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: Icon(
+                _isRecording ? Icons.stop : Icons.mic,
+                color: Colors.white,
+                size: 30,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Center(
+          child: Text(
+            _isRecording
+                ? 'Tippen zum Stoppen'
+                : hasEntry
+                    ? 'Bereits aufgenommen'
+                    : 'Aufnahme starten',
+            style: const TextStyle(
+              fontSize: 10,
+              color: AppColors.textMuted,
+            ),
+          ),
+        ),
+
+        const SizedBox(height: AppSpacing.gap),
+
+        // Skip button
+        if (!hasEntry)
+          Center(
+            child: GestureDetector(
+              onTap: _skip,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'Heute überspringen',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textDisabled,
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
-}
 
-class _AppIconSmall extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 34,
-      height: 34,
-      child: CustomPaint(painter: _LogoIconPainter()),
-    );
-  }
-}
+  // ─── Date helpers ─────────────────────────────────────────────────────────────
 
-/// Paints the LeichtGesagt logo icon:
-/// microphone (left) + three ascending bars (right).
-class _LogoIconPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final double s = size.width / 1024; // scale factor from 1024-unit design
-
-    final Paint fill = Paint()
-      ..color = AppColors.indigo
-      ..style = PaintingStyle.fill;
-
-    final Paint stroke = Paint()
-      ..color = AppColors.indigo
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 48 * s
-      ..strokeCap = StrokeCap.round;
-
-    // Mic capsule
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(278 * s, 192 * s, 164 * s, 292 * s),
-        Radius.circular(82 * s),
-      ),
-      fill,
-    );
-
-    // Mic arch (U-shape)
-    final path = Path()
-      ..moveTo(218 * s, 375 * s)
-      ..cubicTo(218 * s, 602 * s, 504 * s, 602 * s, 504 * s, 375 * s);
-    canvas.drawPath(path, stroke);
-
-    // Mic stand
-    canvas.drawLine(
-      Offset(360 * s, 572 * s),
-      Offset(360 * s, 664 * s),
-      stroke,
-    );
-
-    // Mic base
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(276 * s, 646 * s, 168 * s, 40 * s),
-        Radius.circular(20 * s),
-      ),
-      fill,
-    );
-
-    // Ascending bars: dim → mid → full opacity
-    final bars = [
-      (568.0, 486.0, 200.0, 0.38),
-      (666.0, 356.0, 330.0, 0.68),
-      (764.0, 226.0, 460.0, 1.00),
+  String _todayLabel() {
+    final now = DateTime.now();
+    const weekdays = [
+      'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag',
+      'Freitag', 'Samstag', 'Sonntag'
     ];
-    for (final (x, y, h, opacity) in bars) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(x * s, y * s, 72 * s, h * s),
-          Radius.circular(36 * s),
-        ),
-        Paint()
-          ..color = AppColors.indigo.withOpacity(opacity)
-          ..style = PaintingStyle.fill,
-      );
-    }
+    const months = [
+      'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'
+    ];
+    final wd = weekdays[now.weekday - 1];
+    final m = months[now.month - 1];
+    return 'Heute, $wd ${now.day}. $m';
   }
 
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _StreakBadge extends StatelessWidget {
-  final int days;
-  const _StreakBadge({required this.days});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: BoxDecoration(
-        color: AppColors.indigo.withOpacity(0.18),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
-        border: Border.all(color: AppColors.indigo.withOpacity(0.4)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('🔥', style: TextStyle(fontSize: 12)),
-          const SizedBox(width: 4),
-          Text(
-            '$days Tage',
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppColors.indigo,
-            ),
-          ),
-        ],
-      ),
-    );
+  String _lastEntryLabel(AppState state) {
+    final entries = state.allEntries
+        .where((e) => !e.isSkipped && e.hasValues)
+        .toList();
+    if (entries.isEmpty) return '—';
+    final last = entries.last.date;
+    const months = [
+      'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'
+    ];
+    return '${last.day}. ${months[last.month - 1]} ${last.year}';
   }
 }
 
-// ─── Contextual Prompt ───────────────────────────────────────────────────────
+// ─── Prompt Card ──────────────────────────────────────────────────────────────
 
 class _PromptCard extends StatelessWidget {
+  final List<String> categories;
+
+  const _PromptCard({required this.categories});
+
   @override
   Widget build(BuildContext context) {
+    final names = categories.join(', ');
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(AppSpacing.cardPadding),
@@ -188,177 +413,9 @@ class _PromptCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppSpacing.radiusLarge),
         border: Border.all(color: AppColors.border),
       ),
-      child: const Text(
-        'Du kannst etwas zu deinem Stresslevel, deiner Ernährung und deinem Energielevel sagen.',
+      child: Text(
+        'Du kannst etwas zu deinem $names sagen.',
         style: AppTextStyles.body,
-      ),
-    );
-  }
-}
-
-// ─── Category Pills ───────────────────────────────────────────────────────────
-
-class _CategoryPills extends StatelessWidget {
-  static const _categories = [
-    _Category('Stress',    AppColors.stress),
-    _Category('Energie',   AppColors.energy),
-    _Category('Schlaf',    AppColors.sleep),
-    _Category('Ernährung', AppColors.nutrition),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: _categories
-            .map((c) => Padding(
-                  padding: const EdgeInsets.only(right: AppSpacing.gapTight),
-                  child: _CategoryPill(category: c),
-                ))
-            .toList(),
-      ),
-    );
-  }
-}
-
-class _Category {
-  final String name;
-  final Color color;
-  const _Category(this.name, this.color);
-}
-
-class _CategoryPill extends StatelessWidget {
-  final _Category category;
-  const _CategoryPill({required this.category});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1F3A),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
-        border: Border.all(color: AppColors.indigo),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(
-              color: category.color,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            category.name,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Action Area ──────────────────────────────────────────────────────────────
-
-class _ActionArea extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // Standard-Tag (secondary)
-        _SecondaryButton(
-          label: 'Standard-Tag',
-          onTap: () {},
-        ),
-        const SizedBox(height: AppSpacing.gap),
-
-        // Mic button (primary CTA)
-        Center(child: _MicButton(onTap: () {})),
-        const SizedBox(height: 6),
-        const Center(
-          child: Text('Aufnahme starten', style: AppTextStyles.label),
-        ),
-
-        const SizedBox(height: AppSpacing.gap),
-
-        // Skip (tertiary, very subtle)
-        Center(
-          child: GestureDetector(
-            onTap: () {},
-            child: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                'Heute überspringen',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textDisabled,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SecondaryButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-  const _SecondaryButton({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 13),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMedium),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Center(
-          child: Text(label, style: AppTextStyles.buttonSecondary),
-        ),
-      ),
-    );
-  }
-}
-
-class _MicButton extends StatelessWidget {
-  final VoidCallback onTap;
-  const _MicButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 72,
-        height: 72,
-        decoration: BoxDecoration(
-          color: AppColors.indigo,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.indigo.withOpacity(0.35),
-              blurRadius: 24,
-              spreadRadius: 2,
-            ),
-          ],
-        ),
-        child: const Icon(Icons.mic, color: Colors.white, size: 30),
       ),
     );
   }

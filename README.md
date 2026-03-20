@@ -142,7 +142,9 @@ lib/
     trends_screen.dart    # Dashboard / trends (Screen 3)
   widgets/                # Reusable UI components
   models/                 # Data models
-  services/               # STT, NLP, database services
+  services/               # STT stub, NLP stub, SQLite, SharedPreferences
+  state/
+    app_state.dart        # ChangeNotifier – single source of truth
 assets/
   logo/                   # App icon and wordmark
 ```
