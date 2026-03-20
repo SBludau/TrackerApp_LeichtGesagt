@@ -7,8 +7,36 @@ Voice-first health & habit tracker for Android. Speak your daily observations �
 ## Lokale Entwicklung starten
 
 ### Voraussetzungen (einmalig)
-- Flutter SDK unter `F:\portable_tools\flutter\bin` im PATH
-- Android Studio installiert mit Emulator `Medium_Phone_API_36.1`
+
+| Tool | Version / Pfad | Zweck |
+|---|---|---|
+| Flutter SDK | `F:\portable_tools\flutter\bin` im PATH | Framework |
+| Microsoft OpenJDK **11** | `C:\Program Files\Microsoft\jdk-11.0.30.7-hotspot` | Gradle-Client (kein UDS-Problem) |
+| Microsoft OpenJDK **17** | `C:\Program Files\Microsoft\jdk-17.0.18.8-hotspot` | Gradle-Daemon (AGP 8.x-Pflicht) |
+| Android Studio | mit AVD `Medium_Phone_API_36.1` | Emulator |
+
+> **Warum zwei Java-Versionen?**
+> Android Gradle Plugin ≥ 8.x erfordert Java 17 für den Gradle-*Daemon*.
+> Java 17+ nutzt unter Windows `WEPollSelectorImpl`, das Unix-Domain-Sockets
+> in `%TEMP%` anlegt. Liegt `%TEMP%` unter `C:\Users\…`, schlägt der
+> Socket-Connect() mit „Invalid argument" fehl (Windows-Sicherheitsrichtlinie).
+> Lösung: Java 11 als *Client* (`JAVA_HOME`) vermeidet das Problem; Java 17
+> als *Daemon* (`org.gradle.java.home` in `gradle.properties`) erfüllt AGP.
+
+### Umgebungsvariablen setzen (Windows, einmalig als Benutzervariablen)
+
+```
+JAVA_HOME   = C:\Program Files\Microsoft\jdk-11.0.30.7-hotspot
+PUB_CACHE   = C:\PubCache
+TEMP        = C:\Tmp
+TMP         = C:\Tmp
+```
+
+> `PUB_CACHE` muss auf einen Pfad **ohne Leerzeichen** zeigen — der Standard
+> `C:\Users\<Name>\AppData\Local\Pub\Cache` enthält Leerzeichen und bricht
+> die Dart-Kompilierung ab.
+> `TEMP`/`TMP` müssen auf einen kurzen Pfad **außerhalb** von `C:\Users\`
+> zeigen, damit Java 17 seine UDS-Sockets anlegen kann.
 
 ### App im Emulator starten
 
@@ -19,7 +47,7 @@ flutter emulators --launch Medium_Phone_API_36.1
 
 **2. Warten** bis der Android-Homescreen im Emulator sichtbar ist (~30 Sek.)
 
-**3. App starten** (im Projektordner):
+**3. App starten** (im Projektordner, nachdem die o.g. Umgebungsvariablen gesetzt sind):
 ```powershell
 cd F:\GitHub\TrackerApp_LeichtGesagt
 flutter run
@@ -28,10 +56,17 @@ flutter run
 > Erster Build dauert 2–4 Min. (Gradle). Danach öffnet sich die App automatisch.
 > Änderungen am Code → `r` im Terminal drücken → Hot Reload (sofort sichtbar).
 
-### Fehler: „cannot access engine.stamp"
-Ein vorheriger Flutter-Prozess ist noch aktiv. Kurz warten und Befehl wiederholen.
-Oder alle Flutter-Prozesse beenden:
+### Bekannte Fehler & Lösungen
+
+| Fehler | Ursache | Lösung |
+|---|---|---|
+| `Unable to establish loopback connection` | `TEMP`/`TMP` zeigen auf `C:\Users\…` | `TEMP=C:\Tmp` und `TMP=C:\Tmp` setzen |
+| `pub get` schlägt fehl / Kompilierungsfehler | `PUB_CACHE` enthält Leerzeichen | `PUB_CACHE=C:\PubCache` setzen |
+| `AGP requires Java 17` | Gradle-Daemon läuft mit Java 11 | `org.gradle.java.home` in `gradle.properties` prüfen |
+| `cannot access engine.stamp` | Flutter-Prozess noch aktiv | `taskkill /f /im dart.exe` ausführen oder kurz warten |
+
 ```powershell
+# Flutter-Prozesse beenden (Notfall-Reset):
 taskkill /f /im dart.exe 2>$null; taskkill /f /im flutter.bat 2>$null
 ```
 
