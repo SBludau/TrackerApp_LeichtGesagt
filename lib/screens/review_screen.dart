@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/category.dart';
 import '../models/daily_entry.dart';
 import '../models/extraction_result.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
-import '../widgets/missing_category_card.dart';
 import '../widgets/tag_pill.dart';
 import '../widgets/value_slider.dart';
 
 /// Screen 2 – Review & Validierung.
 ///
-/// Shows the extracted category values, allows adjustment, handles missing
-/// categories, and saves the final [DailyEntry].
+/// Zeigt IMMER Slider für alle aktiven Kategorien.
+/// Erkannte Werte werden vorbelegt; nicht erkannte Kategorien werden mit dem
+/// jeweiligen Standardwert vorbelegt und visuell markiert.
 class ReviewScreen extends StatefulWidget {
   final String transcript;
   final ExtractionResult extractionResult;
@@ -28,33 +27,32 @@ class ReviewScreen extends StatefulWidget {
 }
 
 class _ReviewScreenState extends State<ReviewScreen> {
+  /// Aktuelle Slider-Werte (immer befüllt — extracted oder default).
   late final Map<String, double> _values;
-  final Set<String> _skippedCategories = {};
+
+  /// Kategorien für die der NLP keinen Wert gefunden hat.
+  late final Set<String> _autoFilledKeys;
 
   @override
   void initState() {
     super.initState();
-    _values = Map<String, double>.from(widget.extractionResult.values);
-  }
-
-  // ─── Actions ─────────────────────────────────────────────────────────────────
-
-  void _applyDefault(CategoryType type) {
     final state = context.read<AppState>();
-    final cat = state.activeCategories
-        .firstWhere((c) => c.type == type, orElse: () => Category(type: type));
-    setState(() {
-      _values[type.key] = cat.defaultValue;
-      _skippedCategories.remove(type.key);
-    });
+
+    _values = {};
+    _autoFilledKeys = {};
+
+    for (final cat in state.activeCategories) {
+      if (widget.extractionResult.values.containsKey(cat.key)) {
+        _values[cat.key] = widget.extractionResult.values[cat.key]!;
+      } else {
+        // Nicht erkannt → Standardwert vorbelegen, als "auto-filled" markieren
+        _values[cat.key] = cat.defaultValue;
+        _autoFilledKeys.add(cat.key);
+      }
+    }
   }
 
-  void _skipCategory(CategoryType type) {
-    setState(() {
-      _values.remove(type.key);
-      _skippedCategories.add(type.key);
-    });
-  }
+  // ─── Actions ──────────────────────────────────────────────────────────────
 
   Future<void> _save() async {
     final state = context.read<AppState>();
@@ -69,22 +67,15 @@ class _ReviewScreenState extends State<ReviewScreen> {
     Navigator.of(context).pop();
   }
 
-  // ─── Build ────────────────────────────────────────────────────────────────────
+  // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final activeCategories = state.activeCategories;
-
-    // Categories for which we have values
-    final recordedCategories = activeCategories
-        .where((c) => _values.containsKey(c.key))
-        .toList();
-
-    // Missing categories (not in values AND not explicitly skipped)
-    final missingTypes = widget.extractionResult.missingCategories
-        .where((t) => !_skippedCategories.contains(t.key))
-        .toList();
+    final extractedCount = activeCategories
+        .where((c) => !_autoFilledKeys.contains(c.key))
+        .length;
 
     return Scaffold(
       backgroundColor: AppColors.appBackground,
@@ -96,8 +87,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
               color: AppColors.textSecondary, size: 18),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text('Überprüfen',
-            style: AppTextStyles.screenTitle),
+        title: const Text('Überprüfen', style: AppTextStyles.screenTitle),
         centerTitle: false,
       ),
       body: SafeArea(
@@ -109,7 +99,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Transcript ─────────────────────────────────────────────
+              // ── Transcript ───────────────────────────────────────────────
               const Text('ERKANNTER TEXT', style: AppTextStyles.sectionHeading),
               const SizedBox(height: 8),
               Container(
@@ -121,78 +111,101 @@ class _ReviewScreenState extends State<ReviewScreen> {
                       BorderRadius.circular(AppSpacing.radiusLarge),
                   border: Border.all(color: AppColors.border),
                 ),
-                child: Text(
-                  widget.transcript,
-                  style: AppTextStyles.body,
+                child: Text(widget.transcript, style: AppTextStyles.body),
+              ),
+
+              const SizedBox(height: 20),
+
+              // ── Extraction summary hint ───────────────────────────────────
+              Row(
+                children: [
+                  const Text('WERTE', style: AppTextStyles.sectionHeading),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: extractedCount > 0
+                          ? AppColors.insightBg
+                          : AppColors.missingBg,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: extractedCount > 0
+                            ? AppColors.insightBorder
+                            : AppColors.missingBorder,
+                      ),
+                    ),
+                    child: Text(
+                      extractedCount > 0
+                          ? '$extractedCount von ${activeCategories.length} erkannt'
+                          : 'Keine Werte erkannt – Standardwerte vorbelegt',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: extractedCount > 0
+                            ? const Color(0xFF6EE7B7)
+                            : const Color(0xFFa78bfa),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              // ── Sliders – IMMER für alle Kategorien ──────────────────────
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.cardPadding),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius:
+                      BorderRadius.circular(AppSpacing.radiusLarge),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  children: activeCategories.map((cat) {
+                    final isAutoFilled = _autoFilledKeys.contains(cat.key);
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (isAutoFilled)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                  left: 2, bottom: 3),
+                              child: Text(
+                                'nicht erkannt – Standardwert',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: AppColors.textDisabled
+                                      .withValues(alpha: 0.7),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ValueSlider(
+                            category: cat,
+                            value: _values[cat.key]!,
+                            onChanged: (v) {
+                              setState(() {
+                                _values[cat.key] = v;
+                                // Sobald der Nutzer anpasst, ist es kein Auto-fill mehr
+                                _autoFilledKeys.remove(cat.key);
+                              });
+                            },
+                            dimmed: isAutoFilled,
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 ),
               ),
 
-              // ── Extracted values ───────────────────────────────────────
-              if (recordedCategories.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                const Text(
-                    'ERKANNTE WERTE', style: AppTextStyles.sectionHeading),
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.cardPadding),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius:
-                        BorderRadius.circular(AppSpacing.radiusLarge),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                    children: recordedCategories
-                        .map((cat) => Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 6),
-                              child: ValueSlider(
-                                category: cat,
-                                value: _values[cat.key]!,
-                                onChanged: (v) => setState(
-                                    () => _values[cat.key] = v),
-                              ),
-                            ))
-                        .toList(),
-                  ),
-                ),
-              ],
-
-              // ── Missing categories ─────────────────────────────────────
-              if (missingTypes.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                const Text(
-                  'FEHLENDE KATEGORIEN',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF7C3AED),
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ...missingTypes.map((type) {
-                  final cat = activeCategories.firstWhere(
-                    (c) => c.type == type,
-                    orElse: () => Category(type: type),
-                  );
-                  return Padding(
-                    padding:
-                        const EdgeInsets.only(bottom: AppSpacing.gapTight),
-                    child: MissingCategoryCard(
-                      category: cat,
-                      onUseDefault: () => _applyDefault(type),
-                      onSkip: () => _skipCategory(type),
-                    ),
-                  );
-                }),
-              ],
-
-              // ── Tags ───────────────────────────────────────────────────
+              // ── Tags ─────────────────────────────────────────────────────
               if (widget.extractionResult.tags.isNotEmpty) ...[
                 const SizedBox(height: 20),
-                const Text(
-                    'ERKANNTE BEGRIFFE', style: AppTextStyles.sectionHeading),
+                const Text('ERKANNTE BEGRIFFE',
+                    style: AppTextStyles.sectionHeading),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
@@ -205,7 +218,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
               const SizedBox(height: 32),
 
-              // ── Save button ────────────────────────────────────────────
+              // ── Save button ───────────────────────────────────────────────
               GestureDetector(
                 onTap: _save,
                 child: Container(
@@ -217,15 +230,15 @@ class _ReviewScreenState extends State<ReviewScreen> {
                         BorderRadius.circular(AppSpacing.radiusMedium),
                   ),
                   child: const Center(
-                    child:
-                        Text('Speichern', style: AppTextStyles.buttonPrimary),
+                    child: Text('Speichern',
+                        style: AppTextStyles.buttonPrimary),
                   ),
                 ),
               ),
 
               const SizedBox(height: 12),
 
-              // ── Re-record button ───────────────────────────────────────
+              // ── Re-record button ──────────────────────────────────────────
               GestureDetector(
                 onTap: () => Navigator.of(context).pop(),
                 child: Container(
@@ -238,10 +251,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
                     border: Border.all(color: AppColors.border),
                   ),
                   child: const Center(
-                    child: Text(
-                      'Neu aufnehmen',
-                      style: AppTextStyles.buttonSecondary,
-                    ),
+                    child: Text('Neu aufnehmen',
+                        style: AppTextStyles.buttonSecondary),
                   ),
                 ),
               ),

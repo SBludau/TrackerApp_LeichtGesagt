@@ -5,39 +5,50 @@ import '../theme/app_theme.dart';
 /// A labelled slider for a single category value (1–10).
 ///
 /// Shows:  [color dot]  [category name]  ────────●───────  [value]
+///
+/// [dimmed] = true when the value is an auto-filled default (not extracted).
+/// The slider is still fully interactive — tapping it removes the dimmed state.
 class ValueSlider extends StatelessWidget {
   final Category category;
   final double value;
   final ValueChanged<double> onChanged;
+  final bool dimmed;
 
   const ValueSlider({
     super.key,
     required this.category,
     required this.value,
     required this.onChanged,
+    this.dimmed = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final effectiveColor =
+        dimmed ? category.color.withValues(alpha: 0.45) : category.color;
+    final labelColor =
+        dimmed ? AppColors.textDisabled : AppColors.textSecondary;
+
     return Row(
       children: [
-        // Label
+        // Color dot
         Container(
           width: 7,
           height: 7,
           decoration: BoxDecoration(
-            color: category.color,
+            color: effectiveColor,
             shape: BoxShape.circle,
           ),
         ),
         const SizedBox(width: 8),
+        // Category name
         SizedBox(
           width: 80,
           child: Text(
             category.name,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
-              color: AppColors.textSecondary,
+              color: labelColor,
               fontWeight: FontWeight.w400,
             ),
             overflow: TextOverflow.ellipsis,
@@ -48,9 +59,9 @@ class ValueSlider extends StatelessWidget {
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
               trackHeight: 4,
-              activeTrackColor: category.color,
+              activeTrackColor: effectiveColor,
               inactiveTrackColor: AppColors.elevatedSurface,
-              thumbColor: category.color,
+              thumbColor: effectiveColor,
               thumbShape:
                   const RoundSliderThumbShape(enabledThumbRadius: 6),
               overlayShape:
@@ -75,7 +86,7 @@ class ValueSlider extends StatelessWidget {
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
-              color: category.color,
+              color: effectiveColor,
             ),
           ),
         ),

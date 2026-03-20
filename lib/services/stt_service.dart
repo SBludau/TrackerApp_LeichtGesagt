@@ -49,16 +49,21 @@ class SttService {
     required void Function(String text) onFinal,
     required void Function(String message) onError,
   }) async {
-    if (!_initialised) {
+    // Stop any lingering session first
+    if (_speech.isListening) {
+      await _speech.stop();
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+
+    // Re-initialise if the plugin reports it's no longer available
+    // (happens after a completed session on some Android versions)
+    if (!_initialised || !_speech.isAvailable) {
+      _initialised = false;
       final ok = await initialise();
       if (!ok) {
         onError('Mikrofon-Zugriff verweigert oder Spracherkennung nicht verfügbar.');
         return;
       }
-    }
-
-    if (_speech.isListening) {
-      await _speech.stop();
     }
 
     _isRecording = true;

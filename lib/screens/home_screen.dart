@@ -116,7 +116,12 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
     if (mounted) {
-      setState(() => _liveTranscript = '');
+      // Vollständig zurücksetzen damit Neu-Aufnahme sofort möglich ist
+      setState(() {
+        _liveTranscript = '';
+        _isRecording = false;
+        _sttError = null;
+      });
       await state.loadData();
     }
   }
