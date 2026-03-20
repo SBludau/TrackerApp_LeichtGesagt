@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+
+  <!-- Hintergrund -->
+  <rect width="1024" height="1024" rx="200" fill="#111318"/>
+
+  <!--
+    KONZEPT: Mikrofon (links) + aufsteigende Balken (rechts)
+    Die Balken lesen sich gleichzeitig als:
+      - Schallwellen / Audioausgabe vom Mikrofon (Voice)
+      - Aufsteigendes Balkendiagramm / Trend (Tracking)
+    Das aufgeräumte Zwei-Element-Layout kommuniziert: Leicht
+  -->
+
+  <!-- MIKROFON -->
+
+  <!-- Kapsel (Pill-Form) -->
+  <rect x="278" y="192" width="164" height="292" rx="82" fill="#6366f1"/>
+
+  <!-- Bogen (U-Form um die untere Kapsel-Hälfte) -->
+  <path
+    d="M 218,375 C 218,602 504,602 504,375"
+    stroke="#6366f1" stroke-width="48" fill="none"
+    stroke-linecap="round"
+  />
+
+  <!-- Stiel -->
+  <line x1="360" y1="572" x2="360" y2="664"
+    stroke="#6366f1" stroke-width="48" stroke-linecap="round"
+  />
+
+  <!-- Standfuss (horizontale Linie, abgerundet) -->
+  <rect x="276" y="646" width="168" height="40" rx="20" fill="#6366f1"/>
+
+
+  <!-- AUFSTEIGENDE BALKEN (Schallwellen / Bar-Chart) -->
+  <!-- Baseline bei y=686, Balken wachsen nach oben -->
+  <!-- Breite je 72px, Abstand 26px, Radius 36px (Pill) -->
+  <!-- Höhen: 200 / 330 / 460 → klare Progression -->
+
+  <!-- Balken 1: kurz, gedimmt (beginnendes Tracking) -->
+  <rect x="568" y="486" width="72" height="200" rx="36" fill="#6366f1" opacity="0.38"/>
+
+  <!-- Balken 2: mittel -->
+  <rect x="666" y="356" width="72" height="330" rx="36" fill="#6366f1" opacity="0.68"/>
+
+  <!-- Balken 3: hoch, voll (dominanter Akzent) -->
+  <rect x="764" y="226" width="72" height="460" rx="36" fill="#6366f1"/>
+
+</svg>

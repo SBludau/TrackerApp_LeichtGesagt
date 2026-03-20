@@ -1,0 +1,42 @@
+name: leichtgesagt
+description: Voice-first health & habit tracker. Speak your day — the app tracks it.
+publish_to: 'none'
+
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: '>=3.19.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Local database
+  sqflite: ^2.3.2
+  path: ^1.9.0
+
+  # Shared preferences (onboarding state, default values)
+  shared_preferences: ^2.2.3
+
+  # Speech-to-text (offline, via Vosk — added in later milestone)
+  # vosk_flutter: ^0.2.0
+
+  # LLM NLP extraction (offline, via llama.cpp — added in later milestone)
+  # fllama: ^0.0.1
+
+  # In-app updates (Play Store)
+  in_app_update: ^4.2.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/logo/
+
+  # Fonts: system font stack used throughout — no custom font files needed

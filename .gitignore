@@ -1,0 +1,55 @@
+# ── Dokumente (niemals ins Repo) ──────────────────────────────────────────────
+dokumente/
+Dokumente/
+
+# ── Flutter / Dart ─────────────────────────────────────────────────────────────
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+
+# ── Android ───────────────────────────────────────────────────────────────────
+android/local.properties
+android/key.properties
+android/.gradle/
+android/app/debug/
+android/app/profile/
+android/app/release/
+**/android/**/gradle-wrapper.jar
+**/android/.gradle
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+
+# ── iOS / macOS ───────────────────────────────────────────────────────────────
+ios/.last_build_id
+ios/Pods/
+macos/Pods/
+*.xcworkspace
+!default.xcworkspace
+
+# ── IDEs ──────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Claude Code internal ──────────────────────────────────────────────────────
+.claude/
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+*.jks
+*.keystore
+*.p12
+.env
+.env.*
