@@ -452,6 +452,42 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
           ),
+
+        // ── DEBUG: Letzten Eintrag zurücksetzen ─────────────────────────
+        // TODO: vor Play-Store-Release entfernen
+        if (hasEntry)
+          Center(
+            child: GestureDetector(
+              onTap: () async {
+                final state = context.read<AppState>();
+                await state.resetTodayEntry();
+              },
+              child: Container(
+                margin: const EdgeInsets.only(top: 16),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 7),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3B1515),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF7F1D1D)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bug_report,
+                        size: 13, color: Color(0xFFEF4444)),
+                    SizedBox(width: 6),
+                    Text(
+                      'DEBUG – Eintrag zurücksetzen',
+                      style: TextStyle(
+                          fontSize: 11, color: Color(0xFFEF4444)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        // ── END DEBUG ────────────────────────────────────────────────────
       ],
     );
   }

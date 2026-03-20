@@ -168,6 +168,27 @@ class DatabaseService {
     return Future.wait(rows.map((r) => _buildEntry(db, r)));
   }
 
+  /// Löscht den Eintrag für [date] komplett (inkl. Kinder-Rows).
+  /// Wird nur für Debug-Zwecke / Reset-Button verwendet.
+  Future<void> deleteEntry(DateTime date) async {
+    final db = await _database;
+    final dateKey = DailyEntry.normaliseDate(date).toIso8601String().split('T').first;
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'daily_entries',
+        columns: ['id'],
+        where: 'date = ?',
+        whereArgs: [dateKey],
+        limit: 1,
+      );
+      if (rows.isEmpty) return;
+      final id = rows.first['id'] as int;
+      await txn.delete('entry_values', where: 'entry_id = ?', whereArgs: [id]);
+      await txn.delete('entry_tags',   where: 'entry_id = ?', whereArgs: [id]);
+      await txn.delete('daily_entries', where: 'id = ?',     whereArgs: [id]);
+    });
+  }
+
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
   Future<DailyEntry> _buildEntry(

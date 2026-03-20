@@ -106,6 +106,18 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── Debug helpers ────────────────────────────────────────────────────────────
+
+  /// Löscht den heutigen Eintrag aus der Datenbank.
+  /// Nur für Debug-Zwecke – vor Play-Store-Release entfernen.
+  Future<void> resetTodayEntry() async {
+    await _db.deleteEntry(DateTime.now());
+    _todayEntry = null;
+    _allEntries = await _db.getAllEntries();
+    await _recalculateStreak();
+    notifyListeners();
+  }
+
   // ─── Category management ─────────────────────────────────────────────────────
 
   /// Persists a new set of active categories and reloads state.
