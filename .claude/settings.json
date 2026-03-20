@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"systemMessage\": \"⚠️  PROJEKTREGEL: README.md, CHANGELOG.md und USER_MANUAL.md müssen bei JEDER Code- oder Konfigurationsänderung aktualisiert und mitgepusht werden. Bitte prüfen, ob alle drei Dokumente den aktuellen Stand widerspiegeln!\"}'",
+            "statusMessage": "Dokumentationspflicht prüfen..."
+          }
+        ]
+      }
+    ]
+  }
+}
